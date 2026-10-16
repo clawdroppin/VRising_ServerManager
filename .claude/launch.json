@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "ui", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 1450 },
+    { "name": "ui-preview", "runtimeExecutable": "npx", "runtimeArgs": ["vite", "--port", "1460"], "port": 1460 }
+  ]
+}

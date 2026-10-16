@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main, release]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Typecheck frontend
+        run: npx tsc -p tsconfig.json --noEmit
+      - name: Build frontend
+        run: npx vite build
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --lib
+      - name: Rust lint (warnings are errors)
+        working-directory: src-tauri
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo check

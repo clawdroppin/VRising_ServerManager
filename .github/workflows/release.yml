@@ -1,0 +1,63 @@
+name: Release
+
+# Push a tag like v0.2.0 to build and publish the installer, MSI and portable zip.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Build installer + portable
+        run: npm run build:all
+      - name: Collect artifacts (stable file names for /releases/latest/download links)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item (Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName out/VRising-Server-Manager-Setup.exe
+          Copy-Item (Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1).FullName out/VRising-Server-Manager.msi
+          Copy-Item (Get-ChildItem release/*.zip | Select-Object -First 1).FullName out/VRising-Server-Manager-Portable.zip
+          Get-ChildItem out | ForEach-Object { "{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
+          # Hash first, write afterwards – writing into out/ while hashing out/* locks the file.
+          $sums = Get-ChildItem out -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) }
+          $sums | Out-File -Encoding ascii out/SHA256SUMS.txt
+          Get-Content out/SHA256SUMS.txt
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: V Rising Server Manager ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          # Only tags like v1.2.0-beta are pre-releases; /releases/latest (README links) ignores pre-releases.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          body: |
+            ## Downloads
+            | File | What it is |
+            |---|---|
+            | **VRising-Server-Manager-Setup.exe** | Installer (recommended) – data in `%APPDATA%` |
+            | **VRising-Server-Manager.msi** | Same, as MSI |
+            | **VRising-Server-Manager-Portable.zip** | No install – unzip anywhere writable; data stays in the folder |
+
+            Windows SmartScreen may warn because the app isn't code-signed yet: **More info → Run anyway**.
+            See the [README](https://github.com/clawdroppin/VRising_ServerManager#readme) for the quick-start guide and [CHANGELOG](https://github.com/clawdroppin/VRising_ServerManager/blob/HEAD/CHANGELOG.md) for details.
+          files: |
+            out/VRising-Server-Manager-Setup.exe
+            out/VRising-Server-Manager.msi
+            out/VRising-Server-Manager-Portable.zip
+            out/SHA256SUMS.txt
